@@ -28,7 +28,7 @@
     }
 
     function buildCsv(reviews) {
-        var headers = ['author', 'reviewDate', 'ratings', 'reviewText', 'reviewReplyText', 'reviewReplyDate', 'profileLink', 'startMessageLink'];
+        var headers = ['author', 'reviewDate', 'ratings', 'reviewText', 'reviewReplyText', 'reviewReplyDate', 'profileLink', 'Message', 'MessageType'];
         var row = headers.map(escapeCsv).join(',');
         var rows = [row];
         for (var i = 0; i < reviews.length; i++) {
@@ -41,7 +41,8 @@
                 toCsvVal(r.reviewReplyText),
                 toCsvVal(r.reviewReplyDate),
                 toCsvVal(r.profileLink),
-                toCsvVal(r.startMessageLink)
+                toCsvVal(r.message),
+                toCsvVal(r.messageType)
             ].map(escapeCsv).join(',');
             rows.push(row);
         }
@@ -62,7 +63,7 @@
     }
 
     function sanitizeFilename(name) {
-        return (name || 'product').replace(/[/\\:*?"<>|]/g, '_').trim() || 'product';
+        return (name || 'product').replace(/[/\\:*?"<>|]/g, '_').replace(/\s+/g, '_').trim() || 'product';
     }
 
     function generateQuery(productName) {
@@ -292,6 +293,33 @@
         }, 2000);
     }
 
+    function getExistingChatMessages() {
+        var list = document.querySelector('.chat-comments-list');
+        if (!list) return '';
+        var messages = list.querySelectorAll('.chat-message');
+        var parts = [];
+        for (var i = 0; i < messages.length; i++) {
+            var content = messages[i].querySelector('.chat-message__content');
+            if (!content) continue;
+            var nameEl = content.querySelector('.chat-message__name a');
+            var textEl = content.querySelector('.chat-message__text');
+            var name = nameEl ? nameEl.textContent.trim() : '';
+            var text = textEl ? textEl.textContent.trim() : '';
+            if (name || text) parts.push((name ? name + ': ' : '') + text);
+        }
+        return parts.join('\n---\n');
+    }
+
+    function getChatErrorMessage() {
+        var errWin = document.querySelector('.chat-error-window');
+        if (!errWin) return null;
+        var errTextEl = document.querySelector('.chat-error-window__text .chat-error-window__text');
+        var linkEl = document.querySelector('.chat-error-window__text a');
+        var errText = errTextEl ? errTextEl.textContent.trim() : '';
+        var profileHref = linkEl ? linkEl.href : '';
+        return errText + '!!! Profile Link: ' + profileHref;
+    }
+
     async function mqlContact(mode, pageNum) {
         var valid = ['download', 'contact', 'bothdc', 'bothcd'].indexOf(mode) !== -1;
         if (!valid) {
@@ -345,8 +373,17 @@
                 console.log('Page ' + pageJ + ' (download pass) – Count: ' + elements.length);
                 for (var i = 0; i < elements.length; i++) {
                     var d = getReviewData(elements[i]);
-                    delete d.startMessageEl;
-                    allReviews.push(d);
+                    allReviews.push({
+                        author: d.author,
+                        reviewDate: d.reviewDate,
+                        ratings: d.ratings,
+                        reviewText: d.reviewText,
+                        reviewReplyText: d.reviewReplyText,
+                        reviewReplyDate: d.reviewReplyDate,
+                        profileLink: d.profileLink,
+                        message: 'N/A',
+                        messageType: 'N/A'
+                    });
                 }
             }
             downloadCsv(buildCsv(allReviews), filename);
@@ -362,16 +399,36 @@
             for (var idx = 0; idx < list.length; idx++) {
                 var rev = getReviewData(list[idx]);
                 if (doDownload && !downloadFirst) {
-                    var copy = { author: rev.author, reviewDate: rev.reviewDate, ratings: rev.ratings, reviewText: rev.reviewText, reviewReplyText: rev.reviewReplyText, reviewReplyDate: rev.reviewReplyDate, profileLink: rev.profileLink, startMessageLink: rev.startMessageLink };
+                    var copy = { author: rev.author, reviewDate: rev.reviewDate, ratings: rev.ratings, reviewText: rev.reviewText, reviewReplyText: rev.reviewReplyText, reviewReplyDate: rev.reviewReplyDate, profileLink: rev.profileLink, message: '', messageType: '' };
                     allReviews.push(copy);
                 }
                 if (doContact && rev.startMessageEl) {
                     rev.startMessageEl.click();
                     await sleep(5000);
-                    var msg = generateQuery(product);
-                    console.log(msg);
-                    typeAndSendMessage(msg);
-                    await sleep(5000);
+                    var chatErr = getChatErrorMessage();
+                    if (chatErr !== null) {
+                        if (doDownload && !downloadFirst && allReviews.length > 0) {
+                            allReviews[allReviews.length - 1].message = chatErr;
+                            allReviews[allReviews.length - 1].messageType = 'friends only';
+                        }
+                    } else {
+                        var existingMessages = getExistingChatMessages();
+                        if (existingMessages && existingMessages.trim() !== '') {
+                            if (doDownload && !downloadFirst && allReviews.length > 0) {
+                                allReviews[allReviews.length - 1].message = existingMessages;
+                                allReviews[allReviews.length - 1].messageType = 'existing';
+                            }
+                        } else {
+                            var msg = generateQuery(product);
+                            console.log(msg);
+                            typeAndSendMessage(msg);
+                            await sleep(5000);
+                            if (doDownload && !downloadFirst && allReviews.length > 0) {
+                                allReviews[allReviews.length - 1].message = msg;
+                                allReviews[allReviews.length - 1].messageType = 'sent';
+                            }
+                        }
+                    }
                 }
             }
         }
