@@ -8,6 +8,24 @@
 (function () {
     'use strict';
 
+    // --- Human-like timing (ms). Random delays within these ranges reduce ban risk. ---
+    var DELAY = {
+        pageLoadMin: 4000,      // after loading a reviews page (min ms)
+        pageLoadMax: 8000,      // after loading a reviews page (max ms)
+        chatOpenMin: 4000,      // after clicking "Send message" before reading/sending (min ms)
+        chatOpenMax: 7000,      // after clicking "Send message" (max ms)
+        beforeSendKeyMin: 1500, // type message → wait this range → then Ctrl+Enter (min ms)
+        beforeSendKeyMax: 3500, // (max ms)
+        afterSendMin: 4000,     // after sending message, before next review (min ms)
+        afterSendMax: 8000,     // (max ms)
+        betweenReviewsMin: 1000,// extra pause between processing each review (min ms)
+        betweenReviewsMax: 4000 // (max ms)
+    };
+
+    function randomBetween(min, max) {
+        return min + Math.round(Math.random() * (max - min));
+    }
+
     function sleep(ms) {
         return new Promise(function (r) { setTimeout(r, ms); });
     }
@@ -277,6 +295,7 @@
         if (!chatBox) return;
         chatBox.value = query;
         chatBox.dispatchEvent(new Event('input', { bubbles: true }));
+        var beforeSendMs = randomBetween(DELAY.beforeSendKeyMin, DELAY.beforeSendKeyMax);
         setTimeout(function () {
             try {
                 chatBox.dispatchEvent(new KeyboardEvent('keydown', {
@@ -290,7 +309,7 @@
             } catch (e) {
                 console.error('typeAndSendMessage send step:', e && e.message ? e.message : e);
             }
-        }, 2000);
+        }, beforeSendMs);
     }
 
     function getExistingChatMessages() {
@@ -368,7 +387,7 @@
             for (var j = 0; j < pageList.length; j++) {
                 var pageJ = pageList[j];
                 loadPage(pageJ);
-                await sleep(5000);
+                await sleep(randomBetween(DELAY.pageLoadMin, DELAY.pageLoadMax));
                 var elements = document.querySelectorAll('#content_reviews .comment__info');
                 console.log('Page ' + pageJ + ' (download pass) – Count: ' + elements.length);
                 for (var i = 0; i < elements.length; i++) {
@@ -393,7 +412,7 @@
         for (var pageIdx = 0; pageIdx < pageList.length; pageIdx++) {
             var page = pageList[pageIdx];
             loadPage(page);
-            await sleep(5000);
+            await sleep(randomBetween(DELAY.pageLoadMin, DELAY.pageLoadMax));
             var list = document.querySelectorAll('#content_reviews .comment__info');
             console.log('Page ' + page + (downloadFirst ? ' (contact pass)' : '') + ' – Count: ' + list.length);
             for (var idx = 0; idx < list.length; idx++) {
@@ -404,7 +423,7 @@
                 }
                 if (doContact && rev.startMessageEl) {
                     rev.startMessageEl.click();
-                    await sleep(5000);
+                    await sleep(randomBetween(DELAY.chatOpenMin, DELAY.chatOpenMax));
                     var chatErr = getChatErrorMessage();
                     if (chatErr !== null) {
                         if (doDownload && !downloadFirst && allReviews.length > 0) {
@@ -422,13 +441,14 @@
                             var msg = generateQuery(product);
                             console.log(msg);
                             typeAndSendMessage(msg);
-                            await sleep(5000);
+                            await sleep(randomBetween(DELAY.afterSendMin, DELAY.afterSendMax));
                             if (doDownload && !downloadFirst && allReviews.length > 0) {
                                 allReviews[allReviews.length - 1].message = msg;
                                 allReviews[allReviews.length - 1].messageType = 'sent';
                             }
                         }
                     }
+                    await sleep(randomBetween(DELAY.betweenReviewsMin, DELAY.betweenReviewsMax));
                 }
             }
         }

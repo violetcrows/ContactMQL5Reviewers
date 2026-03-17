@@ -37,6 +37,7 @@ echo "  Removed mql5 entries from /etc/hosts and resolver (if any)."
 
 echo ""
 echo "=== 2. Resolve current mql5.com IP ==="
+# Prefer mql5.com (apex) → 194.164.179.31; www resolves to 148.113.3.77 which may not work on all networks. curl --resolve www.mql5.com:443:194.164.179.31 confirms 194.164.179.31 works.
 MQL5_IP=$(dig @8.8.8.8 +short mql5.com 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
 if [ -z "$MQL5_IP" ]; then
   MQL5_IP=$(dig @8.8.8.8 +short www.mql5.com 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
@@ -70,7 +71,12 @@ address=/mql5.com/$MQL5_IP
 address=/www.mql5.com/$MQL5_IP
 EOL
 echo "  Wrote $MQL5_CONF (IP: $MQL5_IP)"
-sudo brew services restart dnsmasq 2>/dev/null || sudo brew services start dnsmasq 2>/dev/null || true
+if command -v valet &>/dev/null; then
+  echo "  Restarting dnsmasq via Valet..."
+  valet restart 2>/dev/null || true
+else
+  sudo brew services restart dnsmasq 2>/dev/null || sudo brew services start dnsmasq 2>/dev/null || true
+fi
 echo "  dnsmasq restarted"
 
 echo ""
